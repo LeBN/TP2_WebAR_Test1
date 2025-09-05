@@ -4,18 +4,45 @@
         <meta charset="utf-8">
         <script src="https://aframe.io/releases/1.7.0/aframe.min.js"></script>
         <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/aframe/build/aframe-ar.min.js"></script>
-        <link rel="stylesheet" href="./styles.css"/>
   </head>
   <body style="margin:0; overflow:hidden">
-        <a-scene embedded arjs="trackingMethod: best; sourceType: webcam;debugUIEnabled: false;" renderer="logarithmicDepthBuffer:true">
+        <a-scene embedded arjs="trackingMethod: best; sourceType: webcam;debugUIEnabled: false;" renderer="logarithmicDepthBuffer:true" debug>
             <a-marker preset="hiro">
                 <a-box class="interactable" position="0 0.25 0" width=".5" height=".5" depth=".5" color="red" change-color-on-click="color: blue"></a-box>
             </a-marker>
             <a-entity camera>
-                <a-cursor raycaster="objects: .interactable" fuse="true" fuse-timeout="800" material="shader: flat; opacity: 0.8">
+                <a-cursor cursor="rayOrigin: mouse" raycaster="objects: .interactable" fuse="false" material="shader: flat; opacity: 0.8">
                 </a-cursor>
             </a-entity>
         </a-scene>
-        <script src="script.js"></script>
+        <script>
+            AFRAME.registerComponent('change-color-on-click', {
+                schema: {
+                color: {default: 'red'}
+                },
+
+                init: function () {
+                var data = this.data;
+                var el = this.el;
+                var defaultColor = el.getAttribute('material').color;
+                var state = false;
+
+                el.addEventListener('click', function () {
+                    if (!state) {
+                        el.setAttribute('color', data.color);
+                        el.setAttribute('animation__rotate', "property: rotation; to: 0 360 0; dur: 1700; easing: linear; loop: true");
+                        el.setAttribute('animation__updown', "property: position; dir: alternate; to: 0 1 0; dur: 700; easing: easeInOutSine; loop: true");
+                        state = !state;
+                    } else {
+                        el.setAttribute('color', defaultColor);
+                        el.setAttribute('animation__rotate', "property: rotation; to: 0 0 0 ; dur: 300; easing: easeInOutQuad; loop: false");
+                        el.setAttribute('animation__updown', "property: position; to: 0 0 0; dur: 300; easing: easeInOutQuad; loop: false");
+                        state = !state;
+                    }
+
+                });
+                }
+            });
+        </script>
   </body>
 </html>

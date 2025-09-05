@@ -23,11 +23,12 @@ AFRAME.registerComponent('change-color-on-click', {
       var defaultColor = el.getAttribute('material').color;
 
       el.addEventListener('click', function () {
-        if (el.color == defaultColor) {
+        console.log("aaa");
+        /*if (el.color == defaultColor) {
             el.setAttribute('color', data.color);
         } else {
             el.setAttribute('color', defaultColor);
-        }
+        }*/
       });
     }
   });
