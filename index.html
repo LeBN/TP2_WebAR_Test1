@@ -3,7 +3,7 @@
     <script src="https://aframe.io/releases/1.7.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/aframe/build/aframe-ar.min.js"></script>
   </head>
-  <body>
+  <body style="margin:0; overflow:hidden">
     <a-scene vr-mode-ui="enabled: false;" renderer="logarithmicDepthBuffer: true;" embedded arjs="trackingMethod: best; sourceType: webcam;debugUIEnabled: false;" renderer="logarithmicDepthBuffer:true">
         <a-marker preset="hiro">
             <a-box position="-1 2 -4.35" rotation="0 0 0" color="#4CC3D9"  width=".75" height=".75" depth=".75"></a-box>
