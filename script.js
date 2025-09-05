@@ -1,4 +1,4 @@
-document.addEventListener("DOMContentLoaded", () => {
+/*document.addEventListener("DOMContentLoaded", () => {
     
     const cube = document.getElementsByClassName("interactable");
 
@@ -10,4 +10,4 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-});
+});*/
