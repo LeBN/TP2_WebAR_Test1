@@ -2,14 +2,12 @@
 <html>
   <head>
         <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0" />
         <script src="https://aframe.io/releases/1.7.0/aframe.min.js"></script>
         <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/aframe/build/aframe-ar.min.js"></script>
-        <script src="https://rawgit.com/donmccurdy/aframe-extras/master/dist/aframe-extras.loaders.min.js"></script>
   </head>
   <body style="margin:0; overflow:hidden">
-        <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false;">
-            <a-marker type="pattern" url='./pattern-Hiro_Arthur.patt' minConfidence="0.25" emitevents="true">
+        <a-scene embedded arjs="trackingMethod: best; sourceType: webcam;debugUIEnabled: false;" renderer="logarithmicDepthBuffer:true" debug>
+            <a-marker preset="hiro">
                 <a-box class="interactable" position="0 0.25 0" width=".5" height=".5" depth=".5" color="red" change-color-on-click="color: blue"></a-box>
             </a-marker>
             <a-entity camera>
@@ -18,10 +16,6 @@
             </a-entity>
         </a-scene>
         <script>
-            const marker = document.querySelector('a-marker');
-            marker.addEventListener('markerFound', () => console.log('FOUND'));
-            marker.addEventListener('markerLost',  () => console.log('LOST'));
-
             AFRAME.registerComponent('change-color-on-click', {
                 schema: {
                 color: {default: 'red'}
