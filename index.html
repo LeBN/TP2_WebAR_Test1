@@ -10,7 +10,14 @@
   <body style="margin:0; overflow:hidden">
         <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false;">
             <a-marker type="pattern" url='./pattern-Hiro_Arthur.patt' minConfidence="0.25" emitevents="true">
-                <a-box class="interactable" position="0 0.25 0" width=".5" height=".5" depth=".5" color="red" change-color-on-click="color: blue"></a-box>
+                <a-entity
+                    class="interactable" 
+                    position="0 0 0"
+                    rotation="0 180 0"
+                    scale="0.5 0.5 0.5"
+                    animate-on-click=""
+                    gltf-model="./Assets/TARDIS-1.5.5.glb"
+                ></a-entity>
             </a-marker>
             <a-entity camera>
                 <a-cursor cursor="rayOrigin: mouse" raycaster="objects: .interactable" fuse="false" material="shader: flat; opacity: 0.8">
@@ -21,31 +28,36 @@
             const marker = document.querySelector('a-marker');
             marker.addEventListener('markerFound', () => console.log('FOUND'));
             marker.addEventListener('markerLost',  () => console.log('LOST'));
+            const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-            AFRAME.registerComponent('change-color-on-click', {
-                schema: {
-                color: {default: 'red'}
-                },
+            AFRAME.registerComponent('animate-on-click', {
 
                 init: function () {
-                var data = this.data;
                 var el = this.el;
-                var defaultColor = el.getAttribute('material').color;
                 var state = false;
 
-                el.addEventListener('click', function () {
+                el.addEventListener('click', async function () {
                     if (!state) {
-                        el.setAttribute('color', data.color);
-                        el.setAttribute('animation__rotate', "property: rotation; to: 0 360 0; dur: 1700; easing: linear; loop: true");
-                        el.setAttribute('animation__updown', "property: position; dir: alternate; to: 0 1 0; dur: 700; easing: easeInOutSine; loop: true");
+                        el.setAttribute('animation__rotate', "property: rotation; to: 0 540 0; dur: 2000; easing: linear; loop: true");
+                        el.setAttribute('animation__updown', "property: position; dir: alternate; to: 0 .5 0; dur: 1000; easing: easeInOutSine; loop: true");
                         state = !state;
                     } else {
-                        el.setAttribute('color', defaultColor);
-                        el.setAttribute('animation__rotate', "property: rotation; to: 0 0 0 ; dur: 300; easing: easeInOutQuad; loop: false");
-                        el.setAttribute('animation__updown', "property: position; to: 0 .25 0; dur: 300; easing: easeInOutQuad; loop: false");
+                        var rot = parseFloat(el.getAttribute('animation__rotate', null).to.split(' ')[1]);
+                        if (rot > 360) 
+                        { 
+                            el.setAttribute('animation__rotate', "property: rotation; to: 0 540 0 ; dur: 500; easing: easeInOutQuad; loop: false");
+                            el.setAttribute('animation__updown', "property: position; to: 0 0 0; dur: 500; easing: easeInOutQuad; loop: false");
+                            await sleep(500);
+                            el.setAttribute('animation__rotate', "property: rotation; to: 0 180 0 ; dur: 0; easing: easeInOutQuad; loop: false");
+                        } 
+                        else 
+                        { 
+                            el.setAttribute('animation__rotate', "property: rotation; to: 0 180 0 ; dur: 500; easing: easeInOutQuad; loop: false");
+                            el.setAttribute('animation__updown', "property: position; to: 0 0 0; dur: 500; easing: easeInOutQuad; loop: false");
+                            await sleep(500);
+                        }
                         state = !state;
                     }
-
                 });
                 }
             });
