@@ -24,7 +24,7 @@
     </a-entity>-->
 
     <a-entity id="dragon"
-              gltf-model="./Assets/DragonDispersionSolo_Jade.glb"
+              gltf-model="./Assets/DragonDispersion.glb"
               shadow="receive: true; cast: true">
     </a-entity>
 
@@ -110,6 +110,7 @@
   </script>
 
   <script>
+
   // ---------- Réglages renderer & ombres ----------
   const sceneEl = document.querySelector('a-scene');
   sceneEl.addEventListener('render-target-loaded', e => {
@@ -178,11 +179,17 @@
     waitForARVideo().then((video) => {
         const videoTex = new THREE.VideoTexture(video);
         videoTex.colorSpace = THREE.SRGBColorSpace;
+
+        // 🔴 important : mipmaps pour que la transmission puisse “blur” avec roughness
+        videoTex.generateMipmaps = true;
+        videoTex.minFilter = THREE.LinearMipmapLinearFilter;
+        videoTex.magFilter = THREE.LinearFilter;
+        videoTex.needsUpdate = true;
+
         const threeScene = sceneEl.object3D;
         threeScene.background = videoTex;     // ← la transmission voit la vidéo
         // optionnel si dispo :
         threeScene.backgroundIntensity = 1.0;
-        threeScene.backgroundBlurriness = 0.0;
     });
     });
 
@@ -276,6 +283,30 @@
         o.material.needsUpdate = true;
       }
     });
+  });
+
+  const el = document.querySelector('#dragon');
+  el.addEventListener('model-loaded', (e) => {
+    const root = e.detail.model; // THREE.Group
+    // Liste toutes les nodes (noms utiles = ceux que tu as dans Blender)
+    root.traverse((o) => console.log(o.name || '(sans nom)', o));
+
+    // Exemple: retrouver une partie par son nom
+    const piece = root.getObjectByName('Cloth Backdrop');   // remplace par ton nom
+    if (piece) {
+      // 1) Cacher
+      piece.visible = false;
+
+      // 2) OU supprimer proprement
+      piece.parent.remove(piece);
+      piece.traverse((o)=>{
+        if (o.isMesh) {
+          o.geometry?.dispose();
+          if (Array.isArray(o.material)) o.material.forEach(m=>m?.dispose());
+          else o.material?.dispose();
+        }
+      });
+    }
   });
   </script>
 </body>
