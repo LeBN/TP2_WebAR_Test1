@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <title>AR.js + three r176 — glTF animé + pointer (Hiro)</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+    <style>html,body{margin:0;overflow:hidden;background:#000}</style>
+
+    <!-- Import maps : three r176, addons, et AR.js (three) en ES module -->
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.176.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.176.0/examples/jsm/",
+        "threex": "https://raw.githack.com/AR-js-org/AR.js/3.4.7/three.js/build/ar-threex.mjs"
+      }
+    }
+    </script>
+  </head>
+  <body>
+    <script type="module">
+      import * as THREE from 'three';
+      import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+      import { ArToolkitSource, ArToolkitContext, ArMarkerControls } from 'threex';
+
+      // ------------ Renderer / Scene / Camera ------------
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      document.body.appendChild(renderer.domElement);
+
+      const scene = new THREE.Scene();
+
+      // NOTE: en AR.js (three), on utilise une Camera "générique" dont la PM vient d'ARToolkit
+      const camera = new THREE.Camera();
+      scene.add(camera);
+
+      // ------------ AR.js source & context ------------
+      const arSource = new ArToolkitSource({ sourceType: 'webcam' });
+      await arSource.init();
+
+      function onResize(){
+        arSource.onResizeElement();        // ajuste la vidéo
+        arSource.copyElementSizeTo(renderer.domElement); // ajuste le canvas
+        if (arContext.arController !== null) {
+          arSource.copyElementSizeTo(arContext.arController.canvas);
+        }
+      }
+      window.addEventListener('resize', onResize);
+
+      const arContext = new ArToolkitContext({
+        cameraParametersUrl: 'https://raw.githack.com/AR-js-org/AR.js/3.4.7/three.js/data/camera_para.dat',
+        detectionMode: 'mono',
+        maxDetectionRate: 60,
+        canvasWidth: 1280,
+        canvasHeight: 960
+      });
+      await arContext.init();
+      // projection matrix calculée par ARToolkit
+      camera.projectionMatrix.copy(arContext.getProjectionMatrix());
+      onResize();
+
+      // ------------ Marker (Hiro) ------------
+      const markerRoot = new THREE.Group();
+      scene.add(markerRoot);
+      const markerControls = new ArMarkerControls(arContext, markerRoot, {
+        type: 'pattern',
+        patternUrl: 'https://raw.githack.com/AR-js-org/AR.js/3.4.7/three.js/examples/marker-training/examples/pattern-files/patt.hiro'
+      });
+
+      // ------------ Lumières / sol recevant ombre ------------
+      const hemi = new THREE.HemisphereLight(0xffffff, 0x222233, 0.25);
+      scene.add(hemi);
+
+      const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+      sun.position.set(2, 4, 1.5);
+      sun.castShadow = true;
+      sun.shadow.mapSize.set(1024, 1024);
+      sun.shadow.bias = -0.0005;
+      markerRoot.add(sun);
+
+      // Plan “shadow matte” sur le marker
+      const planeGeo = new THREE.PlaneGeometry(2, 2);
+      const shadowMat = new THREE.ShadowMaterial({ opacity: 0.35 });
+      const shadowPlane = new THREE.Mesh(planeGeo, shadowMat);
+      shadowPlane.rotation.x = -Math.PI / 2;
+      shadowPlane.receiveShadow = true;
+      markerRoot.add(shadowPlane);
+
+      // ------------ glTF animé + mixer ------------
+      const loader = new GLTFLoader();
+
+      // 👉 modèle avec animations (Fox) – tu peux remplacer par le tien
+      const FOX_URL = 'https://rawcdn.githack.com/KhronosGroup/glTF-Sample-Models/master/2.0/Fox/glTF/Fox.gltf';
+
+      let fox = null;
+      let mixer = null;
+      let actions = [];
+      loader.load(FOX_URL, (gltf) => {
+        fox = gltf.scene;
+        fox.scale.set(0.01, 0.01, 0.01);     // adapté au gabarit du marker
+        fox.position.set(0, 0, 0);
+        fox.traverse(o => {
+          if (o.isMesh) { o.castShadow = true; o.receiveShadow = false; }
+        });
+        markerRoot.add(fox);
+
+        if (gltf.animations?.length) {
+          mixer = new THREE.AnimationMixer(fox);
+          actions = gltf.animations.map((clip) => {
+            const act = mixer.clipAction(clip);
+            act.loop = THREE.LoopRepeat;
+            return act;
+          });
+          // Démarre sur la première anim
+          actions[0].play();
+        }
+      });
+
+      // ------------ Pointer + Raycaster (click → toggle anim) ------------
+      const raycaster = new THREE.Raycaster();
+      const pointerNDC = new THREE.Vector2();
+      function setPointer(e){
+        const rect = renderer.domElement.getBoundingClientRect();
+        const x = ( (e.clientX - rect.left) / rect.width ) * 2 - 1;
+        const y = - ( (e.clientY - rect.top) / rect.height ) * 2 + 1;
+        pointerNDC.set(x, y);
+      }
+      renderer.domElement.addEventListener('pointerdown', (e) => {
+        setPointer(e);
+        // Ray depuis la caméra vers la scène marker
+        raycaster.setFromCamera(pointerNDC, camera);
+        // On teste dans la hiérarchie du marker (objets posés sur le marker)
+        const intersects = raycaster.intersectObjects(markerRoot.children, true);
+        if (intersects.length) {
+          // toggle play/pause
+          if (actions.length){
+            const anyPlaying = actions.some(a => a.isRunning() && a.timeScale !== 0);
+            if (anyPlaying) actions.forEach(a => a.paused = !a.paused);
+            else actions.forEach(a => { a.reset(); a.paused = false; a.play(); });
+          }
+        }
+      });
+
+      // ------------ Boucle d'anim ------------
+      const clock = new THREE.Clock();
+      renderer.setAnimationLoop(() => {
+        if (arSource.ready) arContext.update(arSource.domElement);
+        const dt = clock.getDelta();
+        if (mixer) mixer.update(dt);
+        renderer.render(scene, camera);
+      });
+    </script>
+  </body>
+</html>
