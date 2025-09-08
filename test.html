@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>AR.js + HDRI rotation (OK)</title>
+  <script src="https://aframe.io/releases/1.7.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/aframe/build/aframe-ar.min.js"></script>
+  <style>body{margin:0;overflow:hidden}</style>
+</head>
+<body>
+  <a-scene embedded vr-mode-ui="enabled:false"
+           arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;"
+           renderer="antialias:true; logarithmicDepthBuffer:true; alpha:false">
+    <!-- OBJETS AU NIVEAU RACINE (monde fixe) -->
+    <a-entity id="sun"
+              light="type: directional; castShadow: true; intensity: 1.1"
+              position="-2 6 3">
+    </a-entity>
+
+    <!--<a-entity id="statue"
+              gltf-model="./Assets/zapotec_funerary_urn_600-900_ce_4K.glb"
+              emissive-material="color: #000000; intensity: 0"
+              shadow="receive: true; cast: true">
+    </a-entity>-->
+
+    <a-entity id="dragon"
+              gltf-model="./Assets/DragonDispersion.glb"
+              shadow="receive: true; cast: true">
+    </a-entity>
+
+    <a-sphere id="ball" radius="0.2" position=".5 .1 .5"
+              material="metalness:1; roughness:0; color:#ffffff"
+              shadow="cast: true"></a-sphere>
+
+    <a-plane id="shadowPlane"
+             rotation="-90 0 0"
+             width="4" height="4"
+             position="0 0 0"
+             material="color: #ffffff; transparent: true; opacity: 0"
+             shadow="receive: true">
+    </a-plane>
+
+    <!-- La caméra suit le marker (elle est SEULE) -->
+    <a-marker-camera preset="hiro"></a-marker-camera>
+  </a-scene>
+
+  <!-- Expose la même instance de THREE qu'A-Frame -->
+  <script>window.THREE = AFRAME.THREE;</script>
+
+  <!-- Mini RGBELoader UMD (corrigé) -->
+  <script>
+  (function (THREE) {
+    if (THREE.RGBELoader) return;
+    function RGBELoader(manager) {
+      this.manager = manager || THREE.DefaultLoadingManager;
+      this.path = ''; this.dataType = THREE.UnsignedByteType;
+    }
+    RGBELoader.prototype.setDataType = function (t) { this.dataType = t; return this; };
+    RGBELoader.prototype.setPath    = function (p) { this.path = p; return this; };
+    RGBELoader.prototype.load = function (url, onLoad, onProgress, onError) {
+      const loader = new THREE.FileLoader(this.manager);
+      loader.setPath(this.path); loader.setResponseType('arraybuffer');
+      loader.load(url, (buffer) => {
+        try {
+          const texData = parseRGBE(buffer, this.dataType);
+          const tex = new THREE.DataTexture(texData.data, texData.width, texData.height,
+                                            THREE.RGBAFormat, this.dataType);
+          tex.needsUpdate = true;
+          tex.generateMipmaps = false;
+          tex.magFilter = THREE.LinearFilter;
+          tex.minFilter = THREE.LinearFilter;
+          tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+          tex.mapping = THREE.EquirectangularReflectionMapping;
+          tex.colorSpace = THREE.LinearSRGBColorSpace;
+          if (onLoad) onLoad(tex);
+        } catch (e) { onError ? onError(e) : console.error(e); }
+      }, onProgress, onError);
+    };
+    function parseRGBE(buffer, dataType) {
+      const bytes = new Uint8Array(buffer); let p = 0;
+      function readLine(){ let s='',c; while(p<bytes.length && (c=bytes[p++])!==10) s+=String.fromCharCode(c); return s; }
+      let line = readLine(); if (line.substr(0,2)!=='#?') throw new Error('Bad HDR header');
+      while ((line = readLine()).length) {}
+      line = readLine(); const m = /-Y\s+(\d+)\s+\+X\s+(\d+)/i.exec(line);
+      if (!m) throw new Error('Bad HDR size'); const H = parseInt(m[1],10), W = parseInt(m[2],10);
+      const out = (dataType===THREE.FloatType)? new Float32Array(W*H*4) : new Uint8Array(W*H*4);
+      const scan = new Uint8Array(4*W);
+      for (let y=0; y<H; y++){
+        let a=bytes[p++], b=bytes[p++], c=bytes[p++], d=bytes[p++];
+        if (a!==2 || b!==2) throw new Error('Unsupported HDR (non-RLE)');
+        const scanW = (c<<8)+d; if (scanW!==W) throw new Error('Bad scanline width');
+        for (let ch=0; ch<4; ch++){
+          for (let x=0; x<W;){
+            const cnt=bytes[p++]; if (cnt>128){ const run=cnt-128, val=bytes[p++]; for(let k=0;k<run;k++) scan[ch*W + x++] = val; }
+            else { for(let k=0;k<cnt;k++) scan[ch*W + x++] = bytes[p++]; }
+          }
+        }
+        for (let x=0; x<W; x++){
+          const r=scan[x], g=scan[W+x], b2=scan[2*W+x], e=scan[3*W+x];
+          const f = e ? Math.pow(2.0, e - 136) : 0.0; // 128+8
+          const i = (y*W + x)*4;
+          if (out instanceof Float32Array){ out[i]=r*f; out[i+1]=g*f; out[i+2]=b2*f; out[i+3]=1.0; }
+          else { out[i]=Math.min(255, r*f*255); out[i+1]=Math.min(255, g*f*255); out[i+2]=Math.min(255, b2*f*255); out[i+3]=255; }
+        }
+      }
+      return { data: out, width: W, height: H };
+    }
+    THREE.RGBELoader = RGBELoader;
+  })(window.THREE);
+  </script>
+
+  <script>
+
+  // ---------- Réglages renderer & ombres ----------
+  const sceneEl = document.querySelector('a-scene');
+  sceneEl.addEventListener('render-target-loaded', e => {
+    const r = e.target.renderer;
+    r.physicallyCorrectLights = true;
+    r.outputColorSpace = THREE.SRGBColorSpace;
+    r.toneMapping = THREE.NeutralToneMapping;
+    r.toneMappingExposure = 1.0;
+  });
+  sceneEl.addEventListener('loaded', () => {
+    const r = sceneEl.renderer;
+    r.shadowMap.enabled = true;
+    r.shadowMap.type = THREE.PCFSoftShadowMap;
+    r.toneMappingExposure = 1.3;
+
+    const sun = document.querySelector('#sun').getObject3D('light');
+    if (sun) {
+      sun.shadow.mapSize.set(1024, 1024);
+      sun.shadow.bias = -0.0005;
+      sun.shadow.camera.near = 0.1;
+      sun.shadow.camera.far  = 20;
+      sun.shadow.camera.left = -5; sun.shadow.camera.right = 5;
+      sun.shadow.camera.top = 5;  sun.shadow.camera.bottom = -5;
+    }
+
+    const plane = document.querySelector('#shadowPlane').getObject3D('mesh');
+    if (plane) plane.material = new THREE.ShadowMaterial({ opacity: 0.35 });
+    const ball = document.querySelector('#ball').getObject3D('mesh');
+    if (ball) ball.castShadow = true;
+  });
+
+  // ----- (A) Vidéo AR comme background (pour Transmission) -----
+    waitForARVideo().then((video) => {
+      const videoTex = new THREE.VideoTexture(video);
+      videoTex.colorSpace = THREE.SRGBColorSpace;
+      videoTex.minFilter = THREE.LinearFilter;
+      videoTex.magFilter = THREE.LinearFilter;
+
+      const threeScene = sceneEl.object3D;
+      threeScene.background = videoTex;          // la transmission "voit" le monde AR
+      if ('backgroundIntensity' in threeScene) threeScene.backgroundIntensity = 1.0;
+      if ('backgroundBlurriness' in threeScene) threeScene.backgroundBlurriness = 0.0;
+    });
+
+  // ---------- Construction d'une envMap orientée ----------
+  function buildEnvFromHDRRotated(renderer, hdrTex, {yaw=0, pitch=0, roll=0} = {}) {
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const envScene = new THREE.Scene();
+    const sky = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 64, 32),
+      new THREE.MeshBasicMaterial({ map: hdrTex, side: THREE.BackSide, toneMapped: false })
+    );
+    sky.rotation.set(
+      THREE.MathUtils.degToRad(pitch), // X
+      THREE.MathUtils.degToRad(yaw),   // Y
+      THREE.MathUtils.degToRad(roll)   // Z
+    );
+    envScene.add(sky);
+    const { texture } = pmrem.fromScene(envScene, 0.0);
+    pmrem.dispose();
+    return texture;
+  }
+
+  // ---------- Attendre la vidéo AR créée par AR.js ----------
+  sceneEl.addEventListener('loaded', () => {
+    waitForARVideo().then((video) => {
+        const videoTex = new THREE.VideoTexture(video);
+        videoTex.colorSpace = THREE.SRGBColorSpace;
+
+        // 🔴 important : mipmaps pour que la transmission puisse “blur” avec roughness
+        videoTex.generateMipmaps = true;
+        videoTex.minFilter = THREE.LinearMipmapLinearFilter;
+        videoTex.magFilter = THREE.LinearFilter;
+        videoTex.needsUpdate = true;
+
+        const threeScene = sceneEl.object3D;
+        threeScene.background = videoTex;     // ← la transmission voit la vidéo
+        // optionnel si dispo :
+        threeScene.backgroundIntensity = 1.0;
+    });
+    });
+
+    function waitForARVideo(timeoutMs=8000){
+    return new Promise((res,rej)=>{
+        const t0=performance.now(), id=setInterval(()=>{
+        const v=document.querySelector('video[playsinline]')||document.querySelector('video');
+        if(v && v.readyState>=2){clearInterval(id);res(v);}
+        if(performance.now()-t0>timeoutMs){clearInterval(id);rej(new Error('Video AR introuvable'));}
+        },100);
+    });
+    }
+
+  // ---------- Charge 1 seul HDR et applique une rotation visible ----------
+  const HDR_URL = './Assets/WhatsApp-Image-2025-09-08-à-02.25.46_14c651cc.hdr'; // ton HDR
+  let hdrTexture = null;
+
+  sceneEl.addEventListener('loaded', () => {
+    const renderer = sceneEl.renderer;
+    new THREE.RGBELoader()
+      .setDataType(THREE.UnsignedByteType)
+      .load(HDR_URL, (tex) => {
+        hdrTexture = tex;
+        // corrige si inversé :
+        // hdrTexture.flipY = true; hdrTexture.needsUpdate = true;
+
+        // --- applique une rotation nette (ex: yaw 90°) ---
+        applyEnvRotation(225, 180, 0); // Yaw=90°, Pitch=0°, Roll=0°
+        // tu peux tester d'autres valeurs ci-dessus
+      });
+  });
+
+  function applyEnvRotation(yawDeg, pitchDeg, rollDeg){
+    if (!hdrTexture) return;
+    const renderer = sceneEl.renderer;
+    const envMap = buildEnvFromHDRRotated(renderer, hdrTexture, {
+      yaw: yawDeg, pitch: pitchDeg, roll: rollDeg
+    });
+    const threeScene = sceneEl.object3D;
+    threeScene.environment = envMap;
+    threeScene.background  = null; // on garde la vidéo en AR
+
+    // exemple: booster les reflets d'un objet
+    const mesh = document.querySelector('#ball').getObject3D('mesh');
+    if (mesh && mesh.material) {
+      mesh.material.envMapIntensity = 1.6;
+      mesh.material.needsUpdate = true;
+    }
+  }
+
+  // ---------- Forcer/affiner Transmission/Dispersion sur les modèles ----------
+  function tuneTransmissive(node) {
+    node.traverse((o) => {
+      const m = o.material;
+      if (!o.isMesh || !m || !m.isMeshPhysicalMaterial) return;
+
+      // Si l’extension KHR_* existe, GLTFLoader a déjà mis des valeurs.
+      // On affine / on fournit des défauts raisonnables :
+      if (m.transmission === undefined) m.transmission = 1.0;   // plein verre
+      if (m.ior === undefined)          m.ior = 1.5;            // ~verre
+      if (m.thickness === undefined)    m.thickness = 0.08;     // adapte à l’échelle
+      if (m.attenuationDistance === undefined) m.attenuationDistance = 0.75;
+      if (m.attenuationColor === undefined)    m.attenuationColor = new THREE.Color(0xffffff);
+
+      // DISPERSION (three r173+)
+      if (m.dispersion === undefined)   m.dispersion = 0.02;
+
+      m.roughness = Math.min(m.roughness ?? 0.05, 0.25);
+      m.metalness = 0.0;
+      m.envMapIntensity = 1.0;
+
+      // Pas nécessaire d'activer transparent pour transmission, mais ok si besoin :
+      // m.transparent = true;
+      m.side = THREE.DoubleSide; // utile si la geo est ouverte/fine
+      m.needsUpdate = true;
+    });
+  }
+
+  // ---------- AO réglage correct (facultatif) ----------
+  document.querySelector('#dragon').addEventListener('model-loaded', (e) => {
+    tuneTransmissive(e.detail.model);
+  });
+  const modelEl = document.querySelector('#statue');
+  modelEl.addEventListener('model-loaded', () => {
+    modelEl.object3D.traverse((o) => {
+      if (o.isMesh && o.material?.isMeshStandardMaterial && o.material.aoMap) {
+        o.material.aoMapIntensity = 1.0;
+        if (o.material.aoMap.colorSpace !== THREE.LinearSRGBColorSpace) {
+          o.material.aoMap.colorSpace = THREE.LinearSRGBColorSpace;
+        }
+        o.material.needsUpdate = true;
+      }
+    });
+  });
+
+  const el = document.querySelector('#dragon');
+  el.addEventListener('model-loaded', (e) => {
+    const root = e.detail.model; // THREE.Group
+    // Liste toutes les nodes (noms utiles = ceux que tu as dans Blender)
+    root.traverse((o) => console.log(o.name || '(sans nom)', o));
+
+    // Exemple: retrouver une partie par son nom
+    const piece = root.getObjectByName('Cloth Backdrop');   // remplace par ton nom
+    if (piece) {
+      // 1) Cacher
+      piece.visible = false;
+
+      // 2) OU supprimer proprement
+      piece.parent.remove(piece);
+      piece.traverse((o)=>{
+        if (o.isMesh) {
+          o.geometry?.dispose();
+          if (Array.isArray(o.material)) o.material.forEach(m=>m?.dispose());
+          else o.material?.dispose();
+        }
+      });
+    }
+  });
+  </script>
+</body>
+</html>
